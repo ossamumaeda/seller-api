@@ -1068,3 +1068,55 @@ A implementação do AC-05 concentrou o controle de concorrência no recurso rea
 A introdução do lock pessimista eliminou a janela de corrida existente na implementação anterior e tornou o processamento seguro para execuções simultâneas.
 
 Além disso, a mesma estratégia foi aplicada tanto ao fechamento quanto ao cancelamento de pedidos, garantindo que qualquer alteração de saldo siga exatamente as mesmas regras de sincronização e consistência.
+
+## Decisão no teste
+
+O teste de concorrência não valida qual pedido venceu.
+
+Isso seria incorreto porque depende do escalonamento das threads.
+
+O teste valida somente invariantes:
+
+* apenas um pedido fechado;
+* apenas um consumo criado;
+* saldo nunca negativo.
+
+---
+
+# Testes
+
+A estratégia de testes foi direcionada aos riscos do domínio.
+
+Não foi buscada cobertura total de código.
+
+Foram priorizados:
+
+## Testes unitários
+
+Validam:
+
+* regras da entidade Budget;
+* comportamento dos UseCases;
+* exceções esperadas.
+
+---
+
+## Testes de integração
+
+Validam:
+
+* persistência;
+* constraints do banco;
+* comportamento real do Spring.
+
+---
+
+## Testes HTTP
+
+Validam:
+
+* contratos da API;
+* status HTTP;
+* integração com GlobalExceptionHandler.
+
+---

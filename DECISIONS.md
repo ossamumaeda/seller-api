@@ -128,3 +128,65 @@ Em alguns momentos foi necessário corrigir ou adaptar propostas da IA. Os princ
 * aplicar a mesma estratégia de sincronização também ao cancelamento de pedidos, garantindo consistência em qualquer operação que altere o saldo da verba.
 
 A IA foi utilizada como ferramenta de produtividade, enquanto as decisões finais de modelagem e os trade-offs adotados foram validados durante o desenvolvimento.
+
+## Teste de concorrência
+
+O teste de concorrência não assume qual requisição adquire o lock primeiro, pois a ordem de execução das threads não é determinística.
+
+O teste valida as invariantes do domínio:
+
+- apenas um pedido é fechado;
+- apenas um movimento de consumo é criado;
+- o saldo nunca fica negativo;
+- o saldo final corresponde ao consumo realizado.
+
+A garantia de consistência vem do lock pessimista aplicado na busca da verba.
+
+## Estratégia de testes
+
+A cobertura de testes foi direcionada principalmente para regras de negócio e cenários onde inconsistências financeiras poderiam ocorrer.
+
+Foram priorizados:
+
+- consumo de verba;
+- rejeição por saldo insuficiente;
+- estornos;
+- idempotência;
+- concorrência;
+- contratos HTTP da API.
+
+A intenção não foi buscar cobertura total de código, mas garantir que os invariantes importantes do domínio permanecessem protegidos.
+
+### Testes de concorrência
+
+O teste de concorrência não assume qual requisição será processada primeiro, pois a ordem de execução das threads não é determinística.
+
+O cenário valida as invariantes do negócio:
+
+- somente um pedido pode ser fechado quando a verba disponível não suporta ambos os consumos;
+- somente um movimento de consumo deve ser criado;
+- o saldo nunca pode ficar negativo;
+- o saldo final deve ser consistente com o movimento registrado.
+
+A proteção contra concorrência é realizada através de lock pessimista na entidade `Budget`, garantindo que duas transações não consigam consumir a mesma verba simultaneamente.
+
+### Defesa em camadas
+
+Além da validação na aplicação através da verificação de movimentos existentes, algumas regras críticas também possuem proteção no banco de dados.
+
+Exemplo:
+
+- A aplicação verifica se já existe um movimento de consumo para evitar duplicidade em cenários normais.
+- O banco possui uma constraint `UNIQUE(order_id, movement_type)` como última barreira contra condições de corrida.
+
+Dessa forma, mesmo em um cenário onde duas requisições passam simultaneamente pela validação da aplicação, o banco mantém a consistência dos dados.
+
+### Testes de integração
+
+Foram adicionados testes utilizando o contexto real do Spring para validar:
+
+- persistência dos movimentos;
+- comportamento das constraints do banco;
+- integração entre entidades e repositories.
+
+Esses testes complementam os testes unitários dos casos de uso, garantindo que as regras importantes estejam protegidas tanto no domínio quanto na camada de persistência.
