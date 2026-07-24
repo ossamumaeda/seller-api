@@ -1,6 +1,8 @@
+server:
+  port: 8081
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5437/budget_control
+    url: jdbc:postgresql://localhost:5438/budget_control
     username: postgres
     password: postgres
 

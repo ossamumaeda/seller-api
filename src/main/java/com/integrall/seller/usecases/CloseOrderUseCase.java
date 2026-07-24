@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 import com.integrall.seller.entity.Budget;
 import com.integrall.seller.entity.BudgetMovement;
 import com.integrall.seller.entity.SalesOrder;
+import com.integrall.seller.exceptions.BudgetNotFoundException;
+import com.integrall.seller.exceptions.OrderNotFoundException;
 import com.integrall.seller.repository.BudgetMovementRepository;
 import com.integrall.seller.repository.BudgetRepository;
 import com.integrall.seller.repository.SalesOrderRepository;
@@ -25,22 +27,20 @@ public class CloseOrderUseCase {
     private final BudgetMovementRepository movementRepository;
 
     public void execute(UUID orderId) {
+        SalesOrder order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new OrderNotFoundException(orderId));
 
-        SalesOrder order =
-                orderRepository.findById(orderId)
-                        .orElseThrow();
+        LocalDate competence = LocalDate.now().withDayOfMonth(1);
 
-        LocalDate competence =
-                LocalDate.now()
-                        .withDayOfMonth(1);
-
-        Budget budget =
-                budgetRepository
-                        .findBySellerIdAndCompetence(
-                                order.getSeller().getId(),
-                                competence
-                        )
-                        .orElseThrow();
+        Budget budget = budgetRepository
+                .findBySellerIdAndCompetence(
+                        order.getSeller().getId(),
+                        competence
+                )
+                .orElseThrow(() -> new BudgetNotFoundException(
+                        order.getSeller().getId(),
+                        competence
+                ));
 
         budget.consume(
                 order.getDiscount()

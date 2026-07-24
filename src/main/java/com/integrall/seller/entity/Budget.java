@@ -3,6 +3,8 @@ package com.integrall.seller.entity;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
+import com.integrall.seller.exceptions.InsufficientBudgetException;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -16,14 +18,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-
 @Entity
-@Table(
-    name = "budgets",
-    uniqueConstraints = @UniqueConstraint(
-        columnNames = {"seller_id", "competence"}
-    )
-)
+@Table(name = "budgets", uniqueConstraints = @UniqueConstraint(columnNames = { "seller_id", "competence" }))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -49,6 +45,10 @@ public class Budget extends BaseEntity {
 
         if (amount.signum() <= 0) {
             throw new IllegalArgumentException("Amount must be positive.");
+        }
+
+        if (balance.compareTo(amount) < 0) {
+            throw new InsufficientBudgetException(balance, amount);
         }
 
         balance = balance.subtract(amount);
