@@ -39,4 +39,11 @@ public class SalesOrder extends BaseEntity {
 
     private LocalDateTime closedAt;
 
+    public void close() {
+
+        status = OrderStatus.CLOSED;
+        closedAt = LocalDateTime.now();
+        
+    }
+
 }

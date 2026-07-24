@@ -1,4 +1,5 @@
 package com.integrall.seller.entity;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
@@ -20,10 +21,10 @@ import lombok.Setter;
 
 @Entity
 @Table(
-    name = "budget_movements",
-    uniqueConstraints = @UniqueConstraint(
-        columnNames = {"order_id", "movement_type"}
-    )
+        name = "budget_movements",
+        uniqueConstraints = @UniqueConstraint(
+                columnNames = {"order_id", "movement_type"}
+        )
 )
 @Getter
 @Setter
@@ -53,6 +54,26 @@ public class BudgetMovement extends BaseEntity {
     @PrePersist
     void prePersist() { // Auto set to the today date
         createdAt = LocalDateTime.now();
+    }
+
+    public static BudgetMovement consumption( Budget budget, SalesOrder order) {
+
+        BudgetMovement movement
+                = new BudgetMovement();
+
+        movement.setBudget(budget);
+
+        movement.setOrder(order);
+
+        movement.setMovementType(
+                BudgetMovementType.CONSUMPTION
+        );
+
+        movement.setAmount(
+                order.getDiscount()
+        );
+
+        return movement;
     }
 
 }

@@ -44,4 +44,23 @@ public class Budget extends BaseEntity {
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal balance;
 
+    /* Bussiness rules */
+    public void consume(BigDecimal amount) {
+
+        if (amount.signum() <= 0) {
+            throw new IllegalArgumentException("Amount must be positive.");
+        }
+
+        balance = balance.subtract(amount);
+    }
+
+    public void refund(BigDecimal amount) {
+
+        if (amount.signum() <= 0) {
+            throw new IllegalArgumentException("Amount must be positive.");
+        }
+
+        balance = balance.add(amount);
+    }
+
 }
