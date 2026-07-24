@@ -1,12 +1,12 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 CREATE TABLE sellers (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY,
     name VARCHAR(150) NOT NULL
 );
 
 CREATE TABLE budgets (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY,
     seller_id UUID NOT NULL,
     competence DATE NOT NULL,
     limit_amount NUMERIC(12,2) NOT NULL,
@@ -27,7 +27,7 @@ CREATE TABLE budgets (
 );
 
 CREATE TABLE sales_order (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY,
     seller_id UUID NOT NULL,
     discount NUMERIC(12,2) NOT NULL,
     status VARCHAR(20) NOT NULL,
@@ -42,7 +42,7 @@ CREATE TABLE sales_order (
 );
 
 CREATE TABLE budget_movements (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY,
     budget_id UUID NOT NULL,
     order_id UUID NOT NULL,
     movement_type VARCHAR(20) NOT NULL,

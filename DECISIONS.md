@@ -87,3 +87,6 @@ Essas restrições evitam inconsistências caso a aplicação falhe ou outro cli
 A estratégia de concorrência (Pessimistic Lock vs Optimistic Lock) será implementada na camada de serviço durante o fluxo de fechamento do pedido.
 
 A decisão foi adiada porque depende da implementação das regras transacionais e não apenas da modelagem do banco.
+
+## Geração de ids
+Visanaod a criação dos dados com um seeder, a remoção da opção: DEFAULT gen_random_uuid() foi feita para facilitar a inserção de dados para teste. Além disso, o spring/hibernate já é responsavel pela criação de UUID, então a opção era redundante.
