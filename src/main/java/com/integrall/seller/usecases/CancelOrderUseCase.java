@@ -8,9 +8,11 @@ import com.integrall.seller.entity.Budget;
 import com.integrall.seller.entity.BudgetMovement;
 import com.integrall.seller.entity.BudgetMovementType;
 import com.integrall.seller.entity.SalesOrder;
+import com.integrall.seller.exceptions.BudgetNotFoundException;
 import com.integrall.seller.exceptions.MovementNotFoundException;
 import com.integrall.seller.exceptions.OrderNotFoundException;
 import com.integrall.seller.repository.BudgetMovementRepository;
+import com.integrall.seller.repository.BudgetRepository;
 import com.integrall.seller.repository.SalesOrderRepository;
 
 import java.util.UUID;
@@ -22,18 +24,12 @@ public class CancelOrderUseCase {
 
     private final SalesOrderRepository orderRepository;
     private final BudgetMovementRepository movementRepository;
+    private final BudgetRepository budgetRepository;
 
     public void execute(UUID orderId) {
 
         SalesOrder order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new OrderNotFoundException(orderId));
-
-        if (movementRepository.existsByOrderAndMovementType(
-                order,
-                BudgetMovementType.REVERSAL
-        )) {
-                return;
-        }       
 
         BudgetMovement consumption = movementRepository
                 .findByOrderAndMovementType(
@@ -42,7 +38,15 @@ public class CancelOrderUseCase {
                 )
                 .orElseThrow(() -> new MovementNotFoundException(orderId));
 
-        Budget budget = consumption.getBudget();
+        Budget budget = lockBudget(consumption);
+
+        // Idempotência: o pedido já foi estornado anteriormente.
+        if (movementRepository.existsByOrderAndMovementType(
+                order,
+                BudgetMovementType.REVERSAL
+        )) {
+            return;
+        }
 
         budget.refund(consumption.getAmount());
 
@@ -55,6 +59,17 @@ public class CancelOrderUseCase {
         );
 
         order.cancel();
+    }
+
+    private Budget lockBudget(BudgetMovement consumption) {
+
+        Budget movementBudget = consumption.getBudget();
+
+        return budgetRepository.findByIdForUpdate(movementBudget.getId())
+                .orElseThrow(() -> new BudgetNotFoundException(
+                        movementBudget.getSeller().getId(),
+                        movementBudget.getCompetence()
+                ));
     }
 
 }

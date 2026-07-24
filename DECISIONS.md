@@ -837,3 +837,234 @@ A solução reconhece explicitamente sua principal limitação: não trata conco
 Essa responsabilidade foi deixada intencionalmente para o AC-05, que introduz mecanismos específicos de sincronização entre transações.
 
 Essa separação permite evoluir o sistema em pequenos passos, mantendo cada requisito responsável por resolver um único problema do domínio.
+
+# Decisões de Implementação — AC-05 (Concorrência)
+
+## Objetivo
+
+O AC-05 introduz um cenário clássico de concorrência:
+
+> Dois pedidos do mesmo vendedor podem ser fechados simultaneamente e disputar o mesmo saldo de verba.
+
+O principal objetivo desta etapa foi garantir que a verba nunca fique negativa e que, quando o saldo não for suficiente para atender ambas as operações, no máximo uma delas seja concluída com sucesso.
+
+---
+
+# O recurso compartilhado é a verba
+
+A primeira decisão foi identificar corretamente qual recurso precisava ser protegido.
+
+Embora a operação seja "fechar pedido", o recurso compartilhado entre as transações não é o pedido.
+
+É a verba (`Budget`).
+
+Todo fechamento e todo estorno alteram o saldo da mesma entidade.
+
+Por esse motivo, o mecanismo de sincronização foi aplicado sobre a verba.
+
+---
+
+# Lock pessimista
+
+Foi adotado o bloqueio pessimista (`PESSIMISTIC_WRITE`) durante a leitura da verba.
+
+Na prática, a consulta passa a ser executada utilizando `SELECT ... FOR UPDATE`.
+
+Fluxo simplificado:
+
+```text
+Transação A
+
+Busca verba (FOR UPDATE)
+        │
+        ▼
+Obtém lock
+        │
+        ▼
+Consome saldo
+        │
+        ▼
+Registra movimento
+        │
+        ▼
+Commit
+        │
+        ▼
+Libera lock
+```
+
+Enquanto isso:
+
+```text
+Transação B
+
+Busca verba (FOR UPDATE)
+
+↓
+
+Aguarda o término da Transação A
+```
+
+Somente após o commit da primeira transação a segunda continua sua execução.
+
+Isso garante que ambas nunca alterem o mesmo saldo simultaneamente.
+
+---
+
+# Por que lock pessimista?
+
+Existem duas estratégias comuns para controle de concorrência no JPA:
+
+* Lock otimista (`@Version`)
+* Lock pessimista (`PESSIMISTIC_WRITE`)
+
+Foi escolhido o lock pessimista por alguns motivos.
+
+Primeiro, trata-se de um domínio financeiro onde a consistência é mais importante do que maximizar paralelismo.
+
+Além disso, o cenário apresentado pelo desafio envolve exatamente duas transações disputando o mesmo recurso.
+
+Nesse contexto, bloquear temporariamente uma única linha da tabela é simples, previsível e suficientemente eficiente.
+
+Com isso, evita-se a necessidade de implementar lógica de retry, tratamento de `OptimisticLockException` e reprocessamento da operação.
+
+Para o escopo do desafio, essa solução oferece uma excelente relação entre simplicidade e robustez.
+
+---
+
+# Evolução da estratégia de idempotência
+
+Durante o AC-04 a operação verificava se já existia um movimento de consumo antes de continuar o processamento.
+
+O fluxo era semelhante a:
+
+```text
+Buscar pedido
+
+↓
+
+Verificar existência do movimento
+
+↓
+
+Consumir saldo
+```
+
+Essa abordagem funcionava para chamadas repetidas em momentos diferentes.
+
+Entretanto, ainda existia uma janela de corrida.
+
+Exemplo:
+
+```text
+Thread A                     Thread B
+
+exists() = false             exists() = false
+
+continua...                  continua...
+```
+
+Ambas poderiam acreditar que eram a primeira execução.
+
+---
+
+# A janela de concorrência foi eliminada
+
+Com a introdução do lock pessimista, a ordem da operação foi alterada.
+
+Novo fluxo:
+
+```text
+Buscar pedido
+
+↓
+
+Obter lock da verba
+
+↓
+
+Verificar existência do movimento
+
+↓
+
+Consumir saldo
+
+↓
+
+Registrar movimento
+
+↓
+
+Fechar pedido
+```
+
+Agora, apenas uma transação consegue executar essa sequência por vez.
+
+Quando a segunda transação obtiver o lock, ela encontrará o estado atualizado da primeira.
+
+Com isso:
+
+* poderá identificar que o movimento já existe (idempotência);
+* ou perceber que o saldo não é mais suficiente (regra de negócio).
+
+A janela existente no AC-04 deixa de existir.
+
+---
+
+# O mesmo princípio foi aplicado ao cancelamento
+
+Embora o Acceptance Criteria trate apenas do fechamento simultâneo, a mesma estratégia foi aplicada ao cancelamento.
+
+A justificativa é que o cancelamento também altera o saldo da verba.
+
+Sem sincronização, um cancelamento concorrente com um fechamento poderia provocar perda de atualização (*lost update*).
+
+Por esse motivo, o `CancelOrderUseCase` também passou a adquirir um lock pessimista antes de alterar o saldo.
+
+Essa decisão mantém um comportamento consistente para qualquer operação que modifique uma verba.
+
+---
+
+# Integridade em múltiplas camadas
+
+Mesmo utilizando bloqueio pessimista, a constraint de unicidade foi mantida no banco:
+
+```sql
+UNIQUE (order_id, movement_type)
+```
+
+Ela deixa de ser a principal proteção contra concorrência e passa a atuar como uma garantia adicional de integridade.
+
+A solução passa a proteger os dados em três níveis:
+
+* Domínio: impede saldo negativo através da entidade `Budget`.
+* Aplicação: controla o fluxo utilizando transações e bloqueio pessimista.
+* Banco de dados: impede registros duplicados através das constraints.
+
+Essa abordagem reduz significativamente a possibilidade de inconsistências.
+
+---
+
+# Trade-off da solução
+
+O lock pessimista reduz o paralelismo das operações que utilizam a mesma verba.
+
+Entretanto, essa limitação foi considerada aceitável porque:
+
+* apenas vendedores da mesma competência disputam o mesmo registro;
+* o tempo de retenção do lock é pequeno;
+* consistência é mais importante do que throughput neste domínio.
+
+Em um sistema com altíssimo volume de operações simultâneas, outras estratégias poderiam ser avaliadas, como lock otimista com retry automático ou mecanismos distribuídos.
+
+Para o escopo deste desafio, o lock pessimista oferece uma solução simples, robusta e fácil de explicar.
+
+---
+
+# Resumo da decisão
+
+A implementação do AC-05 concentrou o controle de concorrência no recurso realmente compartilhado: a verba.
+
+A introdução do lock pessimista eliminou a janela de corrida existente na implementação anterior e tornou o processamento seguro para execuções simultâneas.
+
+Além disso, a mesma estratégia foi aplicada tanto ao fechamento quanto ao cancelamento de pedidos, garantindo que qualquer alteração de saldo siga exatamente as mesmas regras de sincronização e consistência.

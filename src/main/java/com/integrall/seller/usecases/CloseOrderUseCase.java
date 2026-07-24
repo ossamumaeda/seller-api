@@ -28,20 +28,37 @@ public class CloseOrderUseCase {
     private final BudgetMovementRepository movementRepository;
 
     public void execute(UUID orderId) {
+
         SalesOrder order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new OrderNotFoundException(orderId));
 
+        Budget budget = lockBudget(order);
+
+        // Idempotência: o pedido já foi fechado anteriormente.
         if (movementRepository.existsByOrderAndMovementType(
                 order,
                 BudgetMovementType.CONSUMPTION
         )) {
-                return;
-        }       
+            return;
+        }
+
+        budget.consume(order.getDiscount());
+        
+        movementRepository.save(
+                BudgetMovement.consumption(
+                        budget,
+                        order
+                )
+        );
+
+        order.close();
+    }
+
+    private Budget lockBudget(SalesOrder order) {
 
         LocalDate competence = LocalDate.now().withDayOfMonth(1);
 
-        Budget budget = budgetRepository
-                .findBySellerIdAndCompetence(
+        return budgetRepository.findForUpdate(
                         order.getSeller().getId(),
                         competence
                 )
@@ -49,19 +66,6 @@ public class CloseOrderUseCase {
                         order.getSeller().getId(),
                         competence
                 ));
-
-        budget.consume(
-                order.getDiscount()
-        );
-        
-        BudgetMovement budgetMovement = BudgetMovement.consumption(
-                budget,
-                order
-        );
-
-        movementRepository.save(budgetMovement);
-
-        order.close();
     }
 
 }

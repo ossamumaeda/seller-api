@@ -33,4 +33,12 @@ public interface BudgetRepository extends JpaRepository<Budget, UUID> {
             @Param("competence") LocalDate competence
     );
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+        select b
+        from Budget b
+        where b.id = :id
+        """)
+    Optional<Budget> findByIdForUpdate(@Param("id") UUID id);
+
 }
