@@ -18,8 +18,8 @@ Take-home desenvolvido para gerenciamento de verba promocional de vendedores.
 ## 1. Clone o repositório
 
 ```bash
-git clone <URL_DO_REPOSITORIO>
-cd budget-control
+git clone https://github.com/ossamumaeda/seller-api
+cd seller-api
 ```
 
 ## 2. Suba o banco de dados
