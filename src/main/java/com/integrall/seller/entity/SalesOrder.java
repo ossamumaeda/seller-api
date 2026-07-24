@@ -43,7 +43,11 @@ public class SalesOrder extends BaseEntity {
 
         status = OrderStatus.CLOSED;
         closedAt = LocalDateTime.now();
-        
+
+    }
+
+    public void cancel() {
+        status = OrderStatus.CANCELLED;
     }
 
 }

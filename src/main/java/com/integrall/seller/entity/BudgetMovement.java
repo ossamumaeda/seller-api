@@ -20,12 +20,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(
-        name = "budget_movements",
-        uniqueConstraints = @UniqueConstraint(
-                columnNames = {"order_id", "movement_type"}
-        )
-)
+@Table(name = "budget_movements", uniqueConstraints = @UniqueConstraint(columnNames = { "order_id", "movement_type" }))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -33,47 +28,67 @@ import lombok.Setter;
 @Builder
 public class BudgetMovement extends BaseEntity {
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "budget_id")
-    private Budget budget;
+        @ManyToOne(fetch = FetchType.LAZY, optional = false)
+        @JoinColumn(name = "budget_id")
+        private Budget budget;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "order_id")
-    private SalesOrder order;
+        @ManyToOne(fetch = FetchType.LAZY, optional = false)
+        @JoinColumn(name = "order_id")
+        private SalesOrder order;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "movement_type", nullable = false)
-    private BudgetMovementType movementType;
+        @Enumerated(EnumType.STRING)
+        @Column(name = "movement_type", nullable = false)
+        private BudgetMovementType movementType;
 
-    @Column(nullable = false, precision = 12, scale = 2)
-    private BigDecimal amount;
+        @Column(nullable = false, precision = 12, scale = 2)
+        private BigDecimal amount;
 
-    @Column(nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+        @Column(nullable = false, updatable = false)
+        private LocalDateTime createdAt;
 
-    @PrePersist
-    void prePersist() { // Auto set to the today date
-        createdAt = LocalDateTime.now();
-    }
+        @PrePersist
+        void prePersist() { // Auto set to the today date
+                createdAt = LocalDateTime.now();
+        }
 
-    public static BudgetMovement consumption( Budget budget, SalesOrder order) {
+        public static BudgetMovement consumption(Budget budget, SalesOrder order) {
 
-        BudgetMovement movement
-                = new BudgetMovement();
+                BudgetMovement movement = new BudgetMovement();
 
-        movement.setBudget(budget);
+                movement.setBudget(budget);
 
-        movement.setOrder(order);
+                movement.setOrder(order);
 
-        movement.setMovementType(
-                BudgetMovementType.CONSUMPTION
-        );
+                movement.setMovementType(
+                                BudgetMovementType.CONSUMPTION);
 
-        movement.setAmount(
-                order.getDiscount()
-        );
+                movement.setAmount(
+                                order.getDiscount());
 
-        return movement;
-    }
+                return movement;
+        }
+
+        public static BudgetMovement reversal(
+                        Budget budget,
+                        SalesOrder order,
+                        BigDecimal amount) {
+
+                BudgetMovement movement = new BudgetMovement();
+
+                movement.setBudget(budget);
+                movement.setOrder(order);
+                movement.setMovementType(BudgetMovementType.REVERSAL);
+                movement.setAmount(amount);
+
+                return movement;
+        }
+
+        public boolean isConsumption() {
+                return movementType == BudgetMovementType.CONSUMPTION;
+        }
+
+        public boolean isReversal() {
+                return movementType == BudgetMovementType.REVERSAL;
+        }
 
 }

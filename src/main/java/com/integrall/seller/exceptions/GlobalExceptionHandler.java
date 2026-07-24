@@ -67,4 +67,19 @@ public class GlobalExceptionHandler {
                                 .body(error);
         }
 
+        @ExceptionHandler(MovementNotFoundException.class)
+        public ResponseEntity<ApiError> handleMovementNotFound(
+                        MovementNotFoundException ex) {
+
+                ApiError error = new ApiError(
+                                ErrorCode.MOVEMENT_NOT_FOUND.name(),
+                                String.format(
+                                                "Consumption movement for order '%s' was not found.",
+                                                ex.getOrderId()));
+
+                return ResponseEntity
+                                .status(HttpStatus.NOT_FOUND)
+                                .body(error);
+        }
+
 }

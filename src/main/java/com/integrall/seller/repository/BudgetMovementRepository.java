@@ -17,4 +17,6 @@ public interface BudgetMovementRepository extends JpaRepository<BudgetMovement, 
             BudgetMovementType movementType
     );
 
+    
+
 }
