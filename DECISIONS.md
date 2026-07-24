@@ -403,3 +403,190 @@ A implementação priorizou um modelo simples, mas com responsabilidades bem def
 * Transações garantem consistência entre múltiplas alterações.
 
 A solução evita complexidade prematura, mas mantém uma estrutura preparada para evoluir conforme os próximos requisitos do domínio forem adicionados.
+
+
+# Decisões de Implementação — AC-02 (Verba insuficiente)
+
+## Evolução incremental da solução
+
+O AC-02 foi implementado como uma evolução direta do AC-01.
+
+A arquitetura construída anteriormente foi mantida, adicionando apenas os comportamentos necessários para suportar a nova regra de negócio.
+
+Essa decisão foi intencional: quando uma nova regra apareceu, a expectativa era que a solução pudesse evoluir sem exigir alterações significativas na estrutura da aplicação.
+
+O fato de o `CloseOrderUseCase` permanecer praticamente inalterado indicou que as responsabilidades estavam bem distribuídas.
+
+---
+
+# A regra pertence ao domínio
+
+O novo requisito estabelece uma invariável do domínio:
+
+> A verba promocional nunca pode ficar negativa.
+
+Por esse motivo, a validação foi implementada dentro da entidade `Budget`, responsável por proteger seu próprio estado.
+
+```java
+public void consume(BigDecimal amount) {
+
+    if (balance.compareTo(amount) < 0) {
+        throw new InsufficientBudgetException(...);
+    }
+
+    balance = balance.subtract(amount);
+}
+```
+
+O caso de uso continua apenas expressando a intenção:
+
+```java
+budget.consume(order.getDiscount());
+```
+
+Sem conhecer detalhes de como a entidade valida ou altera seu estado.
+
+Essa decisão reduz o acoplamento entre a camada de aplicação e as regras do domínio.
+
+---
+
+# Exceções específicas de domínio
+
+Foram criadas exceções específicas para representar erros de negócio.
+
+Exemplos:
+
+* `InsufficientBudgetException`
+* `OrderNotFoundException`
+* `BudgetNotFoundException`
+
+Ao invés de utilizar exceções genéricas do Java (`IllegalArgumentException`, `NoSuchElementException`, etc.), cada situação relevante do domínio passou a possuir um tipo próprio.
+
+Isso melhora:
+
+* legibilidade;
+* rastreabilidade dos erros;
+* tratamento centralizado;
+* evolução futura da aplicação.
+
+Além disso, as exceções permanecem independentes de HTTP ou do Spring Framework.
+
+Elas representam apenas regras do domínio.
+
+---
+
+# Tratamento centralizado de erros HTTP
+
+A tradução entre exceções de domínio e respostas HTTP foi concentrada em um `@RestControllerAdvice`.
+
+Essa decisão separa completamente:
+
+* regras de negócio;
+* protocolo HTTP.
+
+O domínio apenas lança exceções.
+
+A camada HTTP decide como essas exceções serão expostas ao consumidor da API.
+
+Exemplo:
+
+```text
+InsufficientBudgetException
+            │
+            ▼
+GlobalExceptionHandler
+            │
+            ▼
+409 Conflict
+```
+
+Essa abordagem evita que casos de uso conheçam códigos HTTP ou estruturas de resposta da API.
+
+---
+
+# Padronização das respostas de erro
+
+Foi criado um DTO simples (`ApiError`) para representar todas as respostas de erro.
+
+Estrutura:
+
+```json
+{
+  "code": "INSUFFICIENT_BUDGET",
+  "message": "Available balance is lower than requested amount."
+}
+```
+
+Além disso, foi introduzido um `ErrorCode` para evitar códigos literais espalhados pela aplicação.
+
+Essa decisão facilita:
+
+* padronização das respostas;
+* consumo da API pelo frontend;
+* futura internacionalização das mensagens.
+
+---
+
+# Escolha do HTTP 409 (Conflict)
+
+O cenário de verba insuficiente retorna:
+
+```text
+409 Conflict
+```
+
+A requisição possui sintaxe válida e o recurso existe.
+
+Entretanto, o estado atual da aplicação impede que a operação seja realizada.
+
+Esse comportamento representa melhor um conflito de estado do recurso do que erros de validação (400) ou erros inesperados (500).
+
+---
+
+# Rollback automático da transação
+
+O `CloseOrderUseCase` permanece anotado com:
+
+```java
+@Transactional
+```
+
+Quando `Budget.consume()` lança `InsufficientBudgetException`, a execução do caso de uso é interrompida imediatamente.
+
+Como consequência:
+
+* nenhum movimento financeiro é criado;
+* o pedido permanece aberto;
+* nenhuma alteração de saldo é persistida.
+
+O rollback ocorre automaticamente através do gerenciamento transacional do Spring.
+
+Essa característica atende integralmente ao Acceptance Criteria sem necessidade de código adicional.
+
+---
+
+# Evolução preparada para os próximos critérios
+
+A estrutura criada nesta etapa facilita a implementação dos próximos Acceptance Criteria.
+
+Novas exceções de domínio poderão ser adicionadas e tratadas pelo mesmo mecanismo centralizado, como por exemplo:
+
+* pedido já fechado;
+* requisição duplicada;
+* concorrência;
+* operação inválida.
+
+Da mesma forma, novas regras poderão ser incorporadas às entidades sem aumentar a complexidade dos casos de uso.
+
+---
+
+# Resumo da decisão
+
+A implementação do AC-02 reforçou a separação de responsabilidades definida no AC-01.
+
+* O domínio protege suas invariantes através das entidades.
+* Os casos de uso permanecem responsáveis apenas por orquestrar operações.
+* A camada HTTP traduz exceções de domínio em respostas apropriadas.
+* O controle transacional garante consistência dos dados sem necessidade de tratamento manual de rollback.
+
+Como resultado, uma nova regra de negócio foi adicionada sem alterações significativas na estrutura da aplicação, indicando que o modelo está preparado para evoluir conforme os próximos requisitos do desafio.
