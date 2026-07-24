@@ -190,3 +190,139 @@ Foram adicionados testes utilizando o contexto real do Spring para validar:
 - integração entre entidades e repositories.
 
 Esses testes complementam os testes unitários dos casos de uso, garantindo que as regras importantes estejam protegidas tanto no domínio quanto na camada de persistência.
+
+
+# Dashboard (AC-06)
+
+## Objetivo
+
+O requisito do painel do coordenador foi tratado como um caso de uso de consulta (read model), separado do modelo de domínio utilizado pelas operações financeiras.
+
+O objetivo foi fornecer ao frontend exatamente as informações necessárias para a tela, sem expor entidades JPA ou detalhes da estrutura de persistência.
+
+---
+
+## Endpoint específico para o dashboard
+
+Foi criado um endpoint dedicado:
+
+```text
+GET /api/dashboard/budget
+```
+
+Ao invés de reutilizar endpoints de `Seller` ou `Budget`, foi criada uma projeção específica para o painel.
+
+Essa decisão reduz o acoplamento entre frontend e backend e permite que a estrutura da tela evolua sem impactar o modelo de domínio.
+
+---
+
+## Agrupamento por competência
+
+Em vez de limitar o endpoint apenas à competência atual ou exigir um filtro por parâmetro, o endpoint retorna todas as competências cadastradas agrupadas.
+
+Essa abordagem foi escolhida por três motivos:
+
+* simplifica o contrato da API;
+* permite que o frontend navegue entre competências sem novas requisições;
+* mantém o backend responsável apenas por organizar os dados de negócio.
+
+A responsabilidade de escolher qual competência exibir ficou com o frontend.
+
+---
+
+## Indicadores calculados no backend
+
+O backend envia informações já consolidadas para a interface.
+
+Para cada competência são calculados:
+
+* limite total da equipe;
+* saldo total disponível;
+* percentual de utilização da verba;
+* quantidade de vendedores em situação crítica;
+* lista de vendedores.
+
+Esses valores representam regras de negócio e não apenas transformações de apresentação.
+
+---
+
+## Saúde da verba
+
+Foi criado o conceito de saúde da verba (`BudgetHealthStatus`), representado pelos estados:
+
+* HEALTHY
+* WARNING
+* CRITICAL
+
+A classificação é baseada no percentual de utilização da verba.
+
+Centralizar essa regra no backend evita duplicação de lógica entre diferentes clientes e garante que todos utilizem os mesmos critérios.
+
+Caso os limites mudem futuramente, apenas o backend precisa ser alterado.
+
+---
+
+## DTOs específicos
+
+Foram criados DTOs exclusivos para o dashboard:
+
+* `BudgetDashboardResponse`
+* `CompetenceBudgetResponse`
+* `SellerBudgetSummaryResponse`
+
+A API não retorna entidades JPA diretamente.
+
+Essa decisão reduz o acoplamento entre a camada de persistência e a interface e evita que alterações internas do domínio afetem consumidores da API.
+
+---
+
+## Agrupamento em memória
+
+O agrupamento por competência é realizado na camada de aplicação utilizando Streams do Java.
+
+Apesar de ser possível executar agregações diretamente no banco de dados, essa abordagem foi considerada suficiente para o escopo do desafio.
+
+As vantagens são:
+
+* implementação mais simples;
+* maior legibilidade;
+* menor complexidade de consultas SQL.
+
+Em um cenário com grande volume de dados, uma evolução natural seria mover parte dessas agregações para consultas específicas utilizando projeções ou funções de agregação do banco.
+
+---
+
+## Responsabilidades
+
+O caso de uso `GetBudgetDashboardUseCase` é responsável apenas por montar a visão do painel.
+
+O fluxo segue o mesmo padrão utilizado em todo o projeto:
+
+```
+Controller
+    ↓
+UseCase
+    ↓
+Repository
+    ↓
+DTO
+```
+
+Dessa forma, o controller permanece fino, o caso de uso concentra a lógica de composição dos dados e o frontend recebe uma estrutura pronta para consumo.
+
+---
+
+## Trade-offs
+
+A solução prioriza simplicidade e clareza.
+
+Retornar todas as competências em uma única resposta é adequado para o tamanho esperado do desafio, mas pode não escalar para ambientes com muitos anos de histórico ou milhares de vendedores.
+
+Nesse cenário, uma evolução natural seria:
+
+* paginação das competências;
+* filtro por período;
+* consultas agregadas específicas para dashboard;
+* cache dos indicadores consolidados.
+
+Essas otimizações foram consideradas desnecessárias para o escopo e o timebox do teste.

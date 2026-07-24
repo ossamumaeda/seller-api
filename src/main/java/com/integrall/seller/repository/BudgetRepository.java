@@ -2,6 +2,7 @@ package com.integrall.seller.repository;
 
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -40,5 +41,7 @@ public interface BudgetRepository extends JpaRepository<Budget, UUID> {
         where b.id = :id
         """)
     Optional<Budget> findByIdForUpdate(@Param("id") UUID id);
+
+    List<Budget> findAllByOrderByCompetenceDescSellerNameAsc();
 
 }
