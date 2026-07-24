@@ -1,6 +1,5 @@
 package com.integrall.seller.repository;
 
-
 import java.util.Optional;
 import java.util.UUID;
 
@@ -14,9 +13,10 @@ public interface BudgetMovementRepository extends JpaRepository<BudgetMovement, 
 
     Optional<BudgetMovement> findByOrderAndMovementType(
             SalesOrder order,
-            BudgetMovementType movementType
-    );
+            BudgetMovementType movementType);
 
-    
+    boolean existsByOrderAndMovementType(
+            SalesOrder order,
+            BudgetMovementType movementType);
 
 }

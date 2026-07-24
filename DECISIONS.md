@@ -590,3 +590,250 @@ A implementação do AC-02 reforçou a separação de responsabilidades definida
 * O controle transacional garante consistência dos dados sem necessidade de tratamento manual de rollback.
 
 Como resultado, uma nova regra de negócio foi adicionada sem alterações significativas na estrutura da aplicação, indicando que o modelo está preparado para evoluir conforme os próximos requisitos do desafio.
+
+# Decisões de Implementação — AC-04 (Idempotência)
+
+## Objetivo
+
+O AC-04 estabelece que uma mesma requisição de fechamento pode ser recebida mais de uma vez, mas o desconto deve ser consumido apenas uma única vez.
+
+O objetivo desta etapa foi tornar a operação **idempotente**, ou seja, permitir que a mesma requisição seja executada repetidamente sem alterar o resultado final após a primeira execução bem-sucedida.
+
+---
+
+# Estratégia adotada
+
+A implementação verifica, no início do `CloseOrderUseCase`, se já existe um movimento de consumo associado ao pedido.
+
+```text
+Buscar pedido
+        │
+        ▼
+Já existe movimento de consumo?
+        │
+   ┌────┴────┐
+   │         │
+ Sim        Não
+   │         │
+ return   Continua o fluxo
+```
+
+Caso o movimento já exista, o caso de uso simplesmente retorna sem executar nenhuma nova operação.
+
+Com isso:
+
+* a verba não é debitada novamente;
+* nenhum novo movimento é criado;
+* o pedido permanece no mesmo estado.
+
+A operação passa a ser naturalmente idempotente para chamadas repetidas.
+
+---
+
+# Por que verificar o movimento e não o status do pedido?
+
+Uma possibilidade seria utilizar:
+
+```java
+if (order.isClosed()) {
+    return;
+}
+```
+
+Essa abordagem foi descartada.
+
+O status do pedido representa apenas o estado do pedido.
+
+O movimento financeiro representa o fato de que houve consumo de verba.
+
+Esse detalhe é importante porque, em sistemas reais, inconsistências podem ocorrer.
+
+Exemplo:
+
+```text
+Pedido = CLOSED
+
+Movimento = inexistente
+```
+
+Se a idempotência fosse baseada apenas no status do pedido, o sistema assumiria que o consumo já ocorreu, mesmo que isso não seja verdade.
+
+Ao utilizar o movimento como referência, a verificação é baseada no evento financeiro que realmente caracteriza a operação.
+
+---
+
+# Uso do banco de dados como proteção adicional
+
+Além da verificação na aplicação, a modelagem já possui uma proteção no banco:
+
+```sql
+UNIQUE (order_id, movement_type)
+```
+
+Isso impede que existam dois movimentos de consumo para o mesmo pedido.
+
+A solução passa a possuir duas camadas de proteção:
+
+1. A aplicação evita executar a operação novamente.
+2. O banco impede que uma duplicação seja persistida caso a aplicação falhe em detectar o cenário.
+
+Essa combinação reduz bastante a chance de inconsistências.
+
+---
+
+# O retorno da operação
+
+Quando uma segunda requisição é recebida para um pedido já processado, a operação simplesmente retorna sucesso (`204 No Content`).
+
+A decisão foi tomada porque esse comportamento representa melhor o conceito de idempotência.
+
+Do ponto de vista do cliente da API, executar novamente uma operação que já foi concluída produz exatamente o mesmo resultado final.
+
+Não existe necessidade de informar erro.
+
+---
+
+# Limitação conhecida
+
+A solução implementada nesta etapa **não resolve concorrência**.
+
+Existe uma pequena janela entre:
+
+```text
+Verificar se o movimento existe
+```
+
+e
+
+```text
+Persistir o novo movimento
+```
+
+Em um cenário de duas requisições simultâneas, ambas podem executar a verificação antes que qualquer uma delas tenha persistido o movimento.
+
+Fluxo simplificado:
+
+```text
+Requisição A                  Requisição B
+
+exists() → false              exists() → false
+
+continua...                   continua...
+
+save()                        save()
+```
+
+Nesse cenário, ambas acreditam que são a primeira execução.
+
+A constraint `UNIQUE` do banco ainda impede a duplicação do movimento, mas uma das transações terminará com erro.
+
+Ou seja, a implementação atual garante idempotência para chamadas repetidas em momentos diferentes, mas ainda não garante comportamento correto para chamadas simultâneas.
+
+---
+
+# Diferença entre idempotência e concorrência
+
+Embora frequentemente apareçam juntas, idempotência e concorrência resolvem problemas diferentes.
+
+## Idempotência
+
+Pergunta respondida:
+
+> "O que acontece se o cliente enviar a mesma requisição novamente?"
+
+Exemplo:
+
+```text
+POST /orders/123/close
+```
+
+Executada agora.
+
+Cinco segundos depois:
+
+```text
+POST /orders/123/close
+```
+
+O resultado continua sendo um único consumo de verba.
+
+---
+
+## Concorrência
+
+Pergunta respondida:
+
+> "O que acontece se duas requisições chegarem exatamente ao mesmo tempo?"
+
+Exemplo:
+
+```text
+Requisição A
+        │
+        ├──────────────┐
+        │              │
+        ▼              ▼
+Requisição B      Banco de Dados
+```
+
+Nesse caso, ambas disputam o mesmo recurso ao mesmo tempo.
+
+O problema deixa de ser repetição lógica da operação e passa a ser sincronização entre transações.
+
+---
+
+# Como isso será resolvido no AC-05
+
+O AC-05 introduz justamente o cenário de concorrência.
+
+A estratégia prevista é utilizar bloqueio no carregamento da verba.
+
+A busca da verba será realizada utilizando um lock pessimista (`PESSIMISTIC_WRITE`).
+
+Com isso:
+
+```text
+Transação A
+        │
+        ▼
+Obtém lock da verba
+        │
+        ▼
+Consome saldo
+        │
+        ▼
+Commit
+```
+
+Enquanto isso:
+
+```text
+Transação B
+
+fica aguardando
+```
+
+Somente após o término da primeira transação a segunda continuará sua execução.
+
+Nesse momento ela já encontrará:
+
+* saldo atualizado;
+* movimento registrado.
+
+Assim, apenas uma das requisições conseguirá concluir o fechamento.
+
+Essa estratégia elimina a janela de corrida existente na implementação do AC-04 e garante o atendimento do Acceptance Criteria relacionado à concorrência.
+
+---
+
+# Resumo da decisão
+
+A implementação do AC-04 priorizou uma solução simples e incremental.
+
+Foi adicionada apenas a lógica necessária para evitar reprocessamentos da mesma operação, mantendo o restante da arquitetura inalterado.
+
+A solução reconhece explicitamente sua principal limitação: não trata concorrência simultânea.
+
+Essa responsabilidade foi deixada intencionalmente para o AC-05, que introduz mecanismos específicos de sincronização entre transações.
+
+Essa separação permite evoluir o sistema em pequenos passos, mantendo cada requisito responsável por resolver um único problema do domínio.

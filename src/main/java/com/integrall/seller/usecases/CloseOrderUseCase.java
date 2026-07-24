@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 
 import com.integrall.seller.entity.Budget;
 import com.integrall.seller.entity.BudgetMovement;
+import com.integrall.seller.entity.BudgetMovementType;
 import com.integrall.seller.entity.SalesOrder;
 import com.integrall.seller.exceptions.BudgetNotFoundException;
 import com.integrall.seller.exceptions.OrderNotFoundException;
@@ -29,6 +30,13 @@ public class CloseOrderUseCase {
     public void execute(UUID orderId) {
         SalesOrder order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new OrderNotFoundException(orderId));
+
+        if (movementRepository.existsByOrderAndMovementType(
+                order,
+                BudgetMovementType.CONSUMPTION
+        )) {
+                return;
+        }       
 
         LocalDate competence = LocalDate.now().withDayOfMonth(1);
 

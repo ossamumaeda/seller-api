@@ -28,6 +28,13 @@ public class CancelOrderUseCase {
         SalesOrder order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new OrderNotFoundException(orderId));
 
+        if (movementRepository.existsByOrderAndMovementType(
+                order,
+                BudgetMovementType.REVERSAL
+        )) {
+                return;
+        }       
+
         BudgetMovement consumption = movementRepository
                 .findByOrderAndMovementType(
                         order,
